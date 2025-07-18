@@ -1,0 +1,15 @@
+gerd(A,C):-grk(A,B),grd(A,C).
+geyd(A,C):-gerd(A,C),ydo(A,C).
+rg(A,G):-geyd(A,C),gtg(A,G).
+
+gbd(A,B):-gerd(A,C),ydc(A,B).
+gegd(A,C):-gbd(A,B),gdo(A,C).
+rg(A,G):-gegd(A,C),gtg(A,G).
+
+gegd(A,G):-gbd(A,C),gdo(A,C).
+rg(A,G):-gegd(A,C),gtg(A,G).
+
+grk1(A,C):-gbd(A,B),gdc(A,C).
+gerd1(A,G):-grk1(A,C),grd1(A,C).
+geyd1(A,G):-gerd1(A,C),ydo1(A,G).
+rg(A,G):-geyd1(A,C),gtg1(A,G).

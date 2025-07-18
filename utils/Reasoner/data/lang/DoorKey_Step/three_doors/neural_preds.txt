@@ -1,0 +1,8 @@
+initial:1:obj
+grk:2:obj,key
+get:2:obj,key
+getrd:2:obj,door
+gtrd:2:obj,door
+gtg:2:obj,goal
+bldo:2:obj,door
+gtbd:2:obj,door

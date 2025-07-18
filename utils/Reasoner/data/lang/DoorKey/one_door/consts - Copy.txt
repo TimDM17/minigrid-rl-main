@@ -1,0 +1,8 @@
+object:obj0,obj1,obj2,obj3
+color:red,yellow,blue
+shape:square,circle,triangle
+direction:left,right,up,down,no_moveh,no_movev
+steps_ver:0step_v,1step_v,2steps_v,3steps_v,4steps_v,5steps_v,6steps_v,7steps_v,8steps_v,9steps_v,10steps_v
+steps_hori:0step_h,1step_h,2steps_h,3steps_h,4steps_h,5steps_h,6steps_h,7steps_h,8steps_h,9steps_h,10steps_h
+group:1st_group,2nd_group,3rd_group
+image:img

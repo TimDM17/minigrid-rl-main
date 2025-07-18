@@ -1,0 +1,8 @@
+plan:4:startpositionh,state,goalh,movenamels
+plan:4:startpositionh,state,goalh,movenamesr
+plan:4:startpositionv,state,goalv,movenamesu
+plan:4:startpositionv,state,goalv,movenamesd
+planf:3:startpositionv,goalv,movenamesu
+planf:3:startpositionv,goalv,movenamesd
+planf:3:startpositionh,goalh,movenamels
+planf:3:startpositionh,goalh,movenamesr

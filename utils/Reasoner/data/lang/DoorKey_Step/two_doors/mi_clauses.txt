@@ -1,0 +1,2 @@
+plang(B,G):-plan(B,G,G,H).
+plan(B,F,G,r(C,D)):-move(C,E,F),plan(B,E,G,D).

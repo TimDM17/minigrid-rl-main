@@ -1,0 +1,8 @@
+position:get(A,B);getrd(A,C);grk(A,B);gtg(A,G);gtrd(A,C);initial(A);
+precondition:initial(A);get(A,B);getrd(A,C);
+postcondition:get(A,B);getrd(A,C);rg(A,G);
+currentstate:getrd(A,C);get(A,B);initial(A);rg(A,G);
+movenamer:grk(A,B);gtrd(A,C);gtg(A,G);
+goal:rg(A,G);
+startstate:initial(A);
+movenamesr:*;

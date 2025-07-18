@@ -1,0 +1,2 @@
+move:3:movenamer,precondition,postcondition
+equal:2:goal,goal

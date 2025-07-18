@@ -1,0 +1,5 @@
+plan(B,g(F),G,l(C,D)):-move(C,E,F),condition_met(E,A),change_state(A,g(F)),plan(B,A,G,D),starth(B).
+plan(B,g(F),G,r(C,D)):-move(C,E,F),condition_met(E,A),change_state(A,g(F)),plan(B,A,G,D),starth(B).
+plan(B,g(F),G,u(C,D)):-move(C,E,F),condition_met(E,A),change_state(A,g(F)),plan(B,A,G,D),startv(B).
+plan(B,g(F),G,d(C,D)):-move(C,E,F),condition_met(E,A),change_state(A,g(F)),plan(B,A,G,D),startv(B).
+planf(B,G,H):-plan(B,F,G,H),equal(F,G).

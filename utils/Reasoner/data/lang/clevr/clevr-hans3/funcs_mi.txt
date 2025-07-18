@@ -1,0 +1,5 @@
+g:1:position:state
+l:2:movenamel,movenamels:movenamels
+r:2:movenamer,movenamesr:movenamesr
+u:2:movenameu,movenamesu:movenamesu
+d:2:movenamed,movenamesd:movenamesd

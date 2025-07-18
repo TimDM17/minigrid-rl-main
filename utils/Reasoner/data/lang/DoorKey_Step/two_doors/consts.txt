@@ -1,0 +1,4 @@
+obj:A
+key:B
+door:C
+goal:G

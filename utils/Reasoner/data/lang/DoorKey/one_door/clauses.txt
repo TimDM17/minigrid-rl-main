@@ -1,0 +1,3 @@
+get(A,B):-initial(A),grk(A,B).
+getrd(A,C):-get(A,B),gtrd(A,C).
+rg(A,G):-getrd(A,C),gtg(A,G).

@@ -1,0 +1,3 @@
+move:2:object,direction
+step_ver:2:object,steps_ver
+step_hori:2:object,steps_hori

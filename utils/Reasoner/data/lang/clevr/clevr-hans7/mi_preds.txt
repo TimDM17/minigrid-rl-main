@@ -1,0 +1,10 @@
+move:3:movenamel,position,position
+move:3:movenamer,position,position
+move:3:movenameu,position,position
+move:3:movenamed,position,position
+condition_met:2:position,state
+change_state:2:state,state
+starth:1:startpositionh
+startv:1:startpositionv
+equal:2:state,goalv
+equal:2:state,goalh

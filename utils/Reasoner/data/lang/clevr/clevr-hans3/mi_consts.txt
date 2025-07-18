@@ -1,0 +1,13 @@
+position:in(obj0,img);pos_h(obj0,0);pos_h(obj0,f(0));pos_h(obj0,f(f(0)));pos_h(obj0,f(f(f(0))));pos_h(obj0,f(f(f(f(0)))));pos_h(obj0,f(f(f(f(f(0))))));pos_v(obj0,0);pos_v(obj0,f(0));pos_v(obj0,f(f(0)));pos_v(obj0,f(f(f(0))));pos_v(obj0,f(f(f(f(0)))));pos_v(obj0,f(f(f(f(f(0))))));
+movenamel:moveleft;
+goalh:pos_h(obj0,f(f(f(f(f(0))))));
+startpositionh:pos_h(obj0,f(0));
+movenamels:*;
+movenamesr:*;
+movenamer:moveright;
+movenameu:moveup;
+goalv:pos_v(obj0,f(f(f(f(f(0))))));
+startpositionv:pos_v(obj0,f(0));
+movenamesu:*;
+movenamesd:*;
+movenamed:movedown;

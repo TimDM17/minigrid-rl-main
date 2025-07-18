@@ -1,0 +1,2 @@
+grab(A,B):-initial(A),gotobeans(A,B).
+makecoffee(A,C):-grab(A,B),gotomachine(A,C).
