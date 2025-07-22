@@ -52,9 +52,9 @@ class A3CAlgo(BaseAlgo):
     """
 
     def __init__(self, envs, acmodel, device=None, num_frames_per_proc=None, discount=0.99, lr=0.001, gae_lambda=0.95,
-                 entropy_coef=0.01, value_loss_coef=0.5, max_grad_norm=0.5, recurrence=1,
+                 entropy_coef=0.05, value_loss_coef=0.5, max_grad_norm=0.5, recurrence=1,
                  rmsprop_alpha=0.99, rmsprop_eps=1e-8, preprocess_obss=None, reshape_reward=None,
-                 num_processes=4, update_interval=5, max_frames=1e7):
+                 num_processes=16, update_interval=1, max_frames=1e7):
         """
         Initialize the A3C algorithm.
         
@@ -217,7 +217,8 @@ class A3CAlgo(BaseAlgo):
                 global_frames=self.global_frames,
                 max_frames=self.max_frames,
                 training_complete=self.training_complete,
-                max_grad_norm=self.max_grad_norm
+                max_grad_norm=self.max_grad_norm,
+                gae_lambda=self.gae_lambda  
             )
             self.workers.append(worker)
 
@@ -236,7 +237,7 @@ class Worker(mp.Process):
     def __init__(self, rank, global_net, optimizer, global_ep, global_ep_r, res_queue, 
                 env, device, preprocess_obss, observation_space, discount, update_interval, 
                 entropy_coef, value_loss_coef, global_frames, max_frames, training_complete, 
-                max_grad_norm=0.5):
+                max_grad_norm=0.5, gae_lambda=0.95): 
         """
         Initialize a worker process.
         """
@@ -270,8 +271,7 @@ class Worker(mp.Process):
         self.entropy_coef = entropy_coef
         self.value_loss_coef = value_loss_coef
         self.max_grad_norm = max_grad_norm
-        
-        # Local network will be created in run() to avoid pickling issues
+        self.gae_lambda = gae_lambda  
 
     def run(self):
         """
@@ -389,8 +389,8 @@ class Worker(mp.Process):
                     
                     # Get current predictions from local network
                     if use_memory:
-                        # Start with fresh memory for batch processing
-                        batch_memory = torch.zeros(len(buffer_obs), memory_size, device=self.device)
+                        # Use the memory from the episode start for the batch
+                        batch_memory = memory[:1].repeat(len(buffer_obs), 1)
                         dist, values, _ = self.local_net(batch_obs, batch_memory)
                     else:
                         outputs = self.local_net(batch_obs, None)
@@ -399,9 +399,19 @@ class Worker(mp.Process):
                         else:
                             dist, values = outputs
                     
-                    # Calculate advantages
-                    advantages = returns - values.squeeze()
-                    
+                    # Calculate GAE (Generalized Advantage Estimation)
+                    buffer_values_np = [v.item() for v in buffer_values]
+                    buffer_values_np.append(R)
+                    gae = 0
+                    advantages_list = []
+                    for i in reversed(range(len(buffer_rewards))):
+                        delta = buffer_rewards[i] + self.discount * buffer_values_np[i+1] - buffer_values_np[i]
+                        gae = delta + self.discount * self.gae_lambda * gae  # Use self.gae_lambda (typically 0.95)
+                        advantages_list.insert(0, gae)
+                    advantages = torch.tensor(advantages_list, dtype=torch.float).to(self.device)
+                    returns = advantages + torch.tensor(buffer_values_np[:-1], dtype=torch.float).to(self.device)
+
+
                     # Calculate losses
                     entropy = dist.entropy().mean()
                     policy_loss = -(log_probs * advantages.detach()).mean()
@@ -419,10 +429,11 @@ class Worker(mp.Process):
                     
                     # Properly accumulate gradients
                     for local_param, global_param in zip(self.local_net.parameters(), self.global_net.parameters()):
-                        if global_param.grad is None:
-                            global_param._grad = local_param.grad.clone()
-                        else:
-                            global_param._grad += local_param.grad
+                        if local_param.grad is not None:
+                            if global_param.grad is None:
+                                global_param._grad = local_param.grad.clone()
+                            else:
+                                global_param._grad += local_param.grad
                     
                     # Perform update step
                     self.optimizer.step()
