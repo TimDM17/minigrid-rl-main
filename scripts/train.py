@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser()
 
 # General parameters
 parser.add_argument("--algo", default="ppo",
-                    help="algorithm to use: a2c | ppo | sac (REQUIRED)")
+                    help="algorithm to use: a2c | ppo | sac | a3c (REQUIRED)")
 parser.add_argument("--env", default="custom",#"MiniGrid-DoorKey-8x8-v0",
                     help="name of the environment to train on (REQUIRED)")
 parser.add_argument("--model", default='ppo_8x8_adaptive_reasoner_dense4.',
@@ -72,6 +72,12 @@ parser.add_argument("--recurrence", type=int, default=1,
                     help="number of time-steps gradient is backpropagated (default: 1). If > 1, a LSTM is added to the model to have memory.")
 parser.add_argument("--text", action="store_true", default=False,
                     help="add a GRU to the model to handle text input")
+
+# A3C parameters
+parser.add_argument("--num-processes-a3c", type=int, default=4,
+                    help="number of worker processes for A3C (default: 4)")
+parser.add_argument("--update-interval-a3c", type=int, default=5,
+                    help="number of steps before updating the global network in A3C (default: 5)")
 
 # SAC parameters
 parser.add_argument("--tau", type=float, default=0.005,
@@ -166,6 +172,15 @@ if __name__ == "__main__":
                     args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                     args.optim_eps, args.batch_size, args.tau, args.alpha, args.target_update_interval,
                     args.replay_size, args.automatic_entropy_tuning, preprocess_obss)
+    elif args.algo == "a3c":
+        # Import A3C from the Added_algorithms module
+        from Added_algorithms.a3c import A3CAlgo
+        
+        algo = A3CAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+                    args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
+                    args.optim_alpha, args.optim_eps, preprocess_obss, reshape_reward=None,
+                    num_processes=args.num_processes_a3c, update_interval=args.update_interval_a3c, 
+                    max_frames=args.frames)
     else:
         raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
