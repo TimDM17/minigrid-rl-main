@@ -417,10 +417,12 @@ class Worker(mp.Process):
                     # Clip gradients by norm
                     torch.nn.utils.clip_grad_norm_(self.local_net.parameters(), self.max_grad_norm)
                     
-                    # Push gradients to global network
+                    # Properly accumulate gradients
                     for local_param, global_param in zip(self.local_net.parameters(), self.global_net.parameters()):
                         if global_param.grad is None:
-                            global_param._grad = local_param.grad
+                            global_param._grad = local_param.grad.clone()
+                        else:
+                            global_param._grad += local_param.grad
                     
                     # Perform update step
                     self.optimizer.step()
@@ -462,7 +464,7 @@ class Worker(mp.Process):
             
             # Update global frame count
             with self.global_frames.get_lock():
-                self.global_frames.value += 1
+                self.global_frames.value += len(buffer_rewards)  # Count actual steps
                 # Check if training should end
                 if self.global_frames.value >= self.max_frames:
                     with self.training_complete.get_lock():
