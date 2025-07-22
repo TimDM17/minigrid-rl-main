@@ -18,7 +18,7 @@ class QNetwork(nn.Module):
     It estimates the Q-value (expected return) for a given observation.
     It is designed to be separate from the actor model
     """
-    def __init__(self, acmodel):
+    def __init__(self, acmodel, action_space):
         super().__init__()
         # The critic needs to process images, so we copy the convolutional layers
         # from the main actor-critic model
@@ -27,8 +27,9 @@ class QNetwork(nn.Module):
         # The embedding size must match the output of the convolutional layers
         self.embedding_size = acmodel.image_embedding_size
         
-        # The head of the network is a linear layer that outputs a single Q-value
-        self.q_head = nn.Linear(self.embedding_size, 1)
+        # Output Q-values for each possible action
+        self.action_space = action_space
+        self.q_head = nn.Linear(self.embedding_size, self.action_space.n)
 
     def forward(self, obs):
         # Handle different observation types
@@ -38,23 +39,18 @@ class QNetwork(nn.Module):
             x = obs["image"]
         else:
             raise ValueError(f"Unsupported observation type: {type(obs)}")
-        
-        # Check the shape and handle it appropriately
-        if len(x.shape) == 4:  # Batch of images
-            if x.shape[1] == 3:  # Already in PyTorch format (B, C, H, W)
-                pass  # No change needed
-            elif x.shape[3] == 3:  # In format (B, H, W, C)
-                x = x.permute(0, 3, 1, 2)  # Convert to PyTorch format
-        elif len(x.shape) == 3:  # Single image
-            if x.shape[0] == 3:  # Already in PyTorch format (C, H, W)
-                x = x.unsqueeze(0)  # Add batch dimension
-            elif x.shape[2] == 3:  # In format (H, W, C)
-                x = x.permute(2, 0, 1).unsqueeze(0)  # Convert to PyTorch format
-        
+    
+        # Permute dimensions from [batch, height, width, channels] to [batch, channels, height, width]
+        # This is the PyTorch expected order for convolutional layers
+        if x.dim() == 4 and x.shape[-1] in [3, 4]:  # If last dimension looks like channels
+            x = x.permute(0, 3, 1, 2)
+    
+        # Process through CNN layers
         embedding = self.image_conv(x)
         embedding = embedding.reshape(embedding.shape[0], -1)
-        q_value = self.q_head(embedding)
-        return q_value
+        # Return Q-values for all actions
+        q_values = self.q_head(embedding)
+        return q_values
 
 # --- SAC Algorithm Implementation ---
 class SACAlgo(BaseAlgo):
@@ -63,30 +59,33 @@ class SACAlgo(BaseAlgo):
     This implementation uses twin critics and automatic temperature tuning
     """
     def __init__(self, envs, acmodel, device=None, num_frames_per_proc=None, discount=0.99, lr=0.001, gae_lambda=0.95,
-                 entropy_coef=0.01, value_loss_coef=0.5, max_grad_norm=0.5, recurrence=1,
-                 adam_eps=1e-8, batch_size=256, tau=0.005, alpha=0.2, target_update_interval=1,
-                 replay_size=1000000, automatic_entropy_tuning=True, preprocess_obss=None, reshape_reward=None):
-        
-        # Call the base class constructor. Some parameters like gae_lambda are not used by SAC
-        # but are part of the base class signature
+             entropy_coef=0.01, value_loss_coef=0.5, max_grad_norm=0.5, recurrence=1,
+             adam_eps=1e-8, batch_size=256, tau=0.005, alpha=0.2, target_update_interval=1,
+             replay_size=1000000, automatic_entropy_tuning=True, preprocess_obss=None, reshape_reward=None):
+    
+        # Call the base class constructor
         super().__init__(envs, acmodel, device, num_frames_per_proc, discount, lr, gae_lambda, entropy_coef,
                          value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward)
 
+        # Store the action space from the environment
+        self.action_space = self.env.action_space  # This is available from BaseAlgo
+
         # --- SAC specific parameters ---
         self.batch_size = batch_size
-        self.tau = tau  # Soft update rate for target networks
+        self.tau = 0.01  # Increased from 0.005
         self.target_update_interval = target_update_interval
         self.automatic_entropy_tuning = automatic_entropy_tuning
+        self.reward_scale = 10.0
 
         # --- Initialize Replay Buffer ---
         self.replay_buffer = ReplayBuffer(replay_size)
         
         # --- Initialize Networks ---
         # Twin Critics and their targets for stable Q-learning
-        self.critic1 = QNetwork(self.acmodel).to(self.device)
-        self.critic2 = QNetwork(self.acmodel).to(self.device)
-        self.target_critic1 = QNetwork(self.acmodel).to(self.device)
-        self.target_critic2 = QNetwork(self.acmodel).to(self.device)
+        self.critic1 = QNetwork(self.acmodel, self.action_space).to(self.device)
+        self.critic2 = QNetwork(self.acmodel, self.action_space).to(self.device)
+        self.target_critic1 = QNetwork(self.acmodel, self.action_space).to(self.device)
+        self.target_critic2 = QNetwork(self.acmodel, self.action_space).to(self.device)
         self.target_critic1.load_state_dict(self.critic1.state_dict())
         self.target_critic2.load_state_dict(self.critic2.state_dict())
 
@@ -104,13 +103,13 @@ class SACAlgo(BaseAlgo):
         
         # --- Automatic Temperature (alpha) Tuning ---
         if self.automatic_entropy_tuning:
-            # Target entropy is usually set to the negative of the action space dimension
-            self.target_entropy = -np.log(1.0 / self.env.action_space.n) * 0.98
-            self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
+            # Better target entropy for discrete action spaces
+            self.target_entropy = -0.5
+            self.log_alpha = torch.tensor([np.log(0.5)], dtype=torch.float32, requires_grad=True, device=self.device)
             self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=lr, eps=adam_eps)
             self.alpha = self.log_alpha.exp().detach()
         else:
-            self.alpha = torch.tensor(alpha, device=self.device)
+            self.alpha = torch.tensor(alpha, dtype=torch.float32, device=self.device)
         
         self.update_counter = 0
 
@@ -148,20 +147,31 @@ class SACAlgo(BaseAlgo):
             next_actions = next_dist.sample()
             next_log_probs = next_dist.log_prob(next_actions).unsqueeze(1)
 
-            # Get Q-values from target critics for the next state
-            target_q1 = self.target_critic1(next_obs)
-            target_q2 = self.target_critic2(next_obs)
+            # Get Q-values from target critics for the next state-action pairs
+            # Select Q-values for specific actions
+            target_q1 = self.target_critic1(next_obs).gather(1, next_actions.unsqueeze(1))
+            target_q2 = self.target_critic2(next_obs).gather(1, next_actions.unsqueeze(1))
             
             # Use the minimum of the two target Q-values to prevent overestimation
             min_target_q = torch.min(target_q1, target_q2)
             
-            # Calculate the soft Q-target
-            soft_q_target = rewards + (1.0 - dones) * self.discount * (min_target_q - self.alpha * next_log_probs)
+            # Calculate the soft Q-target with reward scaling
+            # Apply reward scaling
+            rewards_scaled = rewards * self.reward_scale
+            soft_q_target = rewards_scaled + (1.0 - dones) * self.discount * (min_target_q - self.alpha * next_log_probs)
 
-        # Get current Q-estimates from both critics
-        current_q1 = self.critic1(obs)
-        current_q2 = self.critic2(obs)
+        # Convert soft Q-target to float32
+        soft_q_target = soft_q_target.to(dtype=torch.float32)
+
+        # Get current Q-estimates from both critics for the actions taken
+        # Select Q-values for actions that were actually taken
+        current_q1 = self.critic1(obs).gather(1, actions.unsqueeze(1))
+        current_q2 = self.critic2(obs).gather(1, actions.unsqueeze(1))
         
+        # Make sure current Q values are float32
+        current_q1 = current_q1.to(dtype=torch.float32)
+        current_q2 = current_q2.to(dtype=torch.float32)
+
         # Calculate the loss for each critic
         critic1_loss = F.mse_loss(current_q1, soft_q_target)
         critic2_loss = F.mse_loss(current_q2, soft_q_target)
@@ -184,8 +194,8 @@ class SACAlgo(BaseAlgo):
         entropy = dist.entropy().mean()
 
         # Get Q-values for the new actions from the critics
-        q1_new_actions = self.critic1(obs)
-        q2_new_actions = self.critic2(obs)
+        q1_new_actions = self.critic1(obs).gather(1, new_actions.unsqueeze(1))
+        q2_new_actions = self.critic2(obs).gather(1, new_actions.unsqueeze(1))
         min_q_new_actions = torch.min(q1_new_actions, q2_new_actions)
 
         # Calculate actor loss
@@ -269,34 +279,35 @@ class ReplayBuffer:
         # Unzip the batch into separate lists
         obs, actions, rewards, next_obs, dones, masks = zip(*batch)
 
-        # Convert to tensors
+        # Convert to tensors with explicit dtype
         actions = torch.tensor(actions, dtype=torch.long, device=device)
-        rewards = torch.tensor(rewards, dtype=torch.float, device=device).unsqueeze(1)
-        dones = torch.tensor(dones, dtype=torch.float, device=device).unsqueeze(1)
-        masks = torch.tensor(masks, dtype=torch.float, device=device).unsqueeze(1)
+        rewards = torch.tensor(rewards, dtype=torch.float32, device=device).unsqueeze(1)
+        dones = torch.tensor(dones, dtype=torch.float32, device=device).unsqueeze(1)
+        masks = torch.tensor(masks, dtype=torch.float32, device=device).unsqueeze(1)
         
-        # Process observations in a more robust way
+        # Initialize dictionaries for processed observations
         processed_obs = {}
         processed_next_obs = {}
         
-        # Get the keys from the first observation
-        keys = obs[0].keys()
+        # Get keys from the first observation
+        keys = list(obs[0].keys())
         
+        # Process observations with explicit dtype
         for key in keys:
             try:
                 # Try to stack tensors or convert to tensors
                 if isinstance(obs[0][key], np.ndarray):
-                    processed_obs[key] = torch.tensor(np.array([o[key] for o in obs]), device=device)
-                    processed_next_obs[key] = torch.tensor(np.array([no[key] for no in next_obs]), device=device)
+                    processed_obs[key] = torch.tensor(np.array([o[key] for o in obs]), dtype=torch.float32, device=device)
+                    processed_next_obs[key] = torch.tensor(np.array([no[key] for no in next_obs]), dtype=torch.float32, device=device)
                 elif isinstance(obs[0][key], torch.Tensor):
-                    processed_obs[key] = torch.stack([o[key].to(device) for o in obs])
-                    processed_next_obs[key] = torch.stack([no[key].to(device) for no in next_obs])
+                    # Convert existing tensors to float32
+                    processed_obs[key] = torch.stack([o[key].to(device=device, dtype=torch.float32) for o in obs])
+                    processed_next_obs[key] = torch.stack([no[key].to(device=device, dtype=torch.float32) for no in next_obs])
                 else:
-                    processed_obs[key] = torch.tensor([o[key] for o in obs], device=device)
-                    processed_next_obs[key] = torch.tensor([no[key] for no in next_obs], device=device)
+                    processed_obs[key] = torch.tensor([o[key] for o in obs], dtype=torch.float32, device=device)
+                    processed_next_obs[key] = torch.tensor([o[key] for o in next_obs], dtype=torch.float32, device=device)
             except Exception as e:
                 print(f"Error processing key {key}: {e}")
-                # Skip this key if it can't be processed
                 continue
                 
         # Convert to DictList for compatibility with the actor model
